@@ -6,7 +6,7 @@
 
 ## What this is
 
-[Trinity](https://github.com/abilityai/trinity) is an open-source platform for deploying, orchestrating, and governing fleets of autonomous AI agents on your own hardware. It exposes a **MCP (Model Context Protocol)** endpoint at `https://<your-trinity-host>/mcp` that lists dozens of tools for agent CRUD, scheduled loops, fleet health, event subscriptions, file sharing, voice calling, and more.
+[Trinity](https://github.com/abilityai/trinity) is an open-source platform for deploying, orchestrating, and governing fleets of autonomous AI agents on your own hardware. It exposes a **MCP (Model Context Protocol)** endpoint at `https://<your-trinity-host>/sse` that lists dozens of tools for agent CRUD, scheduled loops, fleet health, event subscriptions, file sharing, voice calling, and more.
 
 This extension wraps a **curated subset** of those tools as native pi tools, so the model can spin up a delegation conversation without injecting every MCP schema into its context.
 
@@ -79,7 +79,7 @@ If you need any of the other tools (schedules, event subscriptions, file sharing
 
 ```bash
 # 1. initialize → capture mcp-session-id
-SID=$(curl -sS -i -X POST "$TRINITY_URL/mcp" \
+SID=$(curl -sS -i -X POST "$TRINITY_URL/sse" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $TRINITY_API_KEY" \
@@ -87,13 +87,13 @@ SID=$(curl -sS -i -X POST "$TRINITY_URL/mcp" \
   | grep -i "^mcp-session-id" | awk '{print $2}' | tr -d '\r\n')
 
 # 2. acknowledge
-curl -sS -o /dev/null -X POST "$TRINITY_URL/mcp" \
+curl -sS -o /dev/null -X POST "$TRINITY_URL/sse" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $TRINITY_API_KEY" -H "mcp-session-id: $SID" \
   -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
 
 # 3. call any tool
-curl -sS -X POST "$TRINITY_URL/mcp" \
+curl -sS -X POST "$TRINITY_URL/sse" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $TRINITY_API_KEY" -H "mcp-session-id: $SID" \
   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"<tool-name>","arguments":{...}},"id":99}'
@@ -102,10 +102,10 @@ curl -sS -X POST "$TRINITY_URL/mcp" \
 Or list everything that's available:
 
 ```bash
-curl -sS -X POST "$TRINITY_URL/mcp" \
+curl -sS -X POST "$TRINITY_URL/sse" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $TRINITY_API_KEY" -H "mcp-session-id: $SID" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":3}'
+  -d '{"jsonrpc":"2.0","method":"tools/list",","id":3}'
 ```
 
 ## Why no CLI
@@ -116,7 +116,7 @@ Pi intentionally has no built-in MCP support. This extension is a ~200-line Stre
 
 ```
 pi (this extension)
-  └─ POST {TRINITY_URL}/mcp
+  └─ POST {TRINITY_URL}/sse
        ├─ initialize             → captures mcp-session-id
        ├─ notifications/initialized
        └─ tools/call             → SSE-formatted JSON-RPC 2.0 reply
