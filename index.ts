@@ -29,7 +29,7 @@ import { join } from "node:path";
 // -----------------------------------------------------------------------------
 
 interface TrinityConfig {
-  baseUrl: string;      // e.g. https://trinity.sifi.git.gmbh
+  baseUrl: string;      // e.g. https://<your-trinity-host>
   token?: string;
 }
 

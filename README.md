@@ -1,14 +1,14 @@
 # @gitgmbh/pi-trinity-mcp
 
-> Pi extension that delegates prompts to agents on the [self-hosted Trinity MCP platform](https://trinity.sifi.git.gmbh). No CLI, no MCP server wiring — pure MCP-over-HTTP+SSE.
+> Pi extension that delegates prompts to agents on any self-hosted [Trinity](https://github.com/abilityai/trinity) MCP platform. No CLI, no MCP server wiring — pure MCP-over-HTTP+SSE.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## What this is
 
-Trinity is an open-source, sovereign infrastructure platform for deploying, orchestrating, and governing fleets of autonomous AI agents on your own hardware. It exposes a **MCP (Model Context Protocol)** endpoint at `https://<your-trinity>/mcp` that lists **84 tools** for agent CRUD, scheduled loops, fleet health, event subscriptions, file sharing, voice calling, and more.
+[Trinity](https://github.com/abilityai/trinity) is an open-source platform for deploying, orchestrating, and governing fleets of autonomous AI agents on your own hardware. It exposes a **MCP (Model Context Protocol)** endpoint at `https://<your-trinity-host>/mcp` that lists dozens of tools for agent CRUD, scheduled loops, fleet health, event subscriptions, file sharing, voice calling, and more.
 
-This extension wraps the **6 most useful delegation primitives** as native pi tools, so the model can spin up a delegation conversation without injecting 84 schemas into its context.
+This extension wraps a **curated subset** of those tools as native pi tools, so the model can spin up a delegation conversation without injecting every MCP schema into its context.
 
 ## Tools surfaced
 
@@ -21,7 +21,7 @@ This extension wraps the **6 most useful delegation primitives** as native pi to
 | `trinity_get_agent_health` | `get_agent_health` — deep health for one agent |
 | `trinity_get_agent_logs` | `get_agent_logs` — tail container logs |
 
-The full 84-tool MCP surface remains reachable via raw `tools/call` calls — see [the docs in this repo](docs/raw-mcp.md) (or ask the model to delegate to `cornelius`, who has full MCP access from inside his container).
+The full MCP surface remains reachable via raw `tools/call` calls — see "Advanced: raw MCP" below.
 
 ## Install
 
@@ -29,40 +29,84 @@ The full 84-tool MCP surface remains reachable via raw `tools/call` calls — se
 pi install npm:@gitgmbh/pi-trinity-mcp
 ```
 
-For team-internal use (without going through npm):
-
-```bash
-pi install git:gitlab.git.gmbh:devops/pi-trinity-mcp
-```
+For other installation sources (private registry, git mirror), see [the pi packages docs](https://pi.dev/docs/latest/packages).
 
 ## Auth
 
-Two env vars — that's it:
+Two env vars — that's all it takes:
 
 ```bash
-export TRINITY_URL="https://trinity.sifi.git.gmbh"   # or your self-hosted host
-export TRINITY_API_KEY="trinity_mcp_…"               # Settings → API Keys in the dashboard
+export TRINITY_URL="<your-trinity-host>"            # e.g. https://trinity.example.com
+export TRINITY_API_KEY="<your-mcp-key>"             # Settings → API Keys in the dashboard
 ```
 
-Optionally store in `~/.pi/agent/settings.json`:
+Optionally store them in `~/.pi/agent/settings.json`:
 
 ```json
-{ "trinity": { "url": "https://...", "token": "trinity_mcp_..." } }
+{ "trinity": { "url": "<your-trinity-host>", "token": "<your-mcp-key>" } }
 ```
 
-Get your key at `<your-trinity>` → Settings → API Keys → Create.
+Get a key at `<your-trinity-host>` → Settings → API Keys → Create.
 
 ## Usage
 
-Once installed, just ask pi:
+Once installed, the model can call any of the six tools. A typical delegation:
 
-> "Delegate to cornelius a plan to migrate stack X"
+> "Delegate to `<your-orchestrator-agent>` a plan to migrate stack X"
 
-Or directly call the tool:
+Or directly:
 
-> "Use `trinity_chat` with `agent='ansiblius'` and message asking for Ansible playbook help"
+> "Use `trinity_chat` with `agent='<your-ops-agent>'` and a message asking for help with Ansible"
 
-See the [`the-agentics/skills/trinity`](https://gitlab.git.gmbh/devops/the-agentics) skill (if your team uses the library distribution) for routing patterns — cornelius for orchestration, ansiblius for Ansible, odoolius/odoofrontius for Odoo, etc.
+A sensible convention is to give your agents role-coded names (e.g. `orchestrator`, `devops`, `docs`, `reviewer`) — that lets the model pick the right agent without remembering a roster. Discover your current roster with `trinity_agents_list`.
+
+### Pattern: orchestrator + specialists
+
+A common pattern is one **orchestrator agent** that triages incoming tasks and dispatches to specialists (Ansible, Odoo, GitLab, debugging, etc.). To use it:
+
+1. Delegate to the orchestrator first when a task is non-trivial — let it decompose the work.
+2. Talk to a specialist directly when you already know which agent owns the topic.
+
+### When NOT to use Trinity
+
+- Trivial local edits, single-file fixes — local tools are faster and free.
+- Anything needing deep context about your open files / session — Trinity has none of that. Include all needed context in `message`.
+- Anything that must complete in <5s — delegated runs are network round-trips plus agent runtime.
+
+## Advanced: raw MCP
+
+If you need any of the other tools (schedules, event subscriptions, file sharing, voice, etc.), call MCP directly from a pi shell. The transport is Streamable HTTP:
+
+```bash
+# 1. initialize → capture mcp-session-id
+SID=$(curl -sS -i -X POST "$TRINITY_URL/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $TRINITY_API_KEY" \
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1"}},"id":1}' \
+  | grep -i "^mcp-session-id" | awk '{print $2}' | tr -d '\r\n')
+
+# 2. acknowledge
+curl -sS -o /dev/null -X POST "$TRINITY_URL/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $TRINITY_API_KEY" -H "mcp-session-id: $SID" \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+
+# 3. call any tool
+curl -sS -X POST "$TRINITY_URL/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $TRINITY_API_KEY" -H "mcp-session-id: $SID" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"<tool-name>","arguments":{...}},"id":99}'
+```
+
+Or list everything that's available:
+
+```bash
+curl -sS -X POST "$TRINITY_URL/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $TRINITY_API_KEY" -H "mcp-session-id: $SID" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":3}'
+```
 
 ## Why no CLI
 
@@ -73,33 +117,34 @@ Pi intentionally has no built-in MCP support. This extension is a ~200-line Stre
 ```
 pi (this extension)
   └─ POST {TRINITY_URL}/mcp
-       ├─ initialize     → captures mcp-session-id
+       ├─ initialize             → captures mcp-session-id
        ├─ notifications/initialized
-       └─ tools/call     → SSE-formatted JSON-RPC 2.0 reply
+       └─ tools/call             → SSE-formatted JSON-RPC 2.0 reply
 ```
 
 All requests use `Authorization: Bearer <TRINITY_API_KEY>`.
 
 ## Development
 
-The extension is a single `index.ts` file that exports a default pi extension factory. Edit it, then test locally:
+The extension is a single `index.ts` file. To iterate locally:
 
 ```bash
-cp index.ts ~/.pi/agent/extensions/trinity/
+ln -s "$(pwd)" ~/.pi/agent/extensions/pi-trinity-mcp
 ```
 
-(pi auto-discovers from `~/.pi/agent/extensions/` during dev.)
+Pi auto-discovers from `~/.pi/agent/extensions/` during development.
 
-## Publish (maintainers only)
+## Publish
+
+Maintainers only:
 
 ```bash
-# Bump version
-npm version patch
-
-# Push to npm — the published package will auto-show on https://pi.dev/packages
-npm publish --access public
+npm version patch     # or minor / major
+npm publish --access public --provenance
 ```
+
+(`--access public` is required for scoped packages to be indexable by the [pi marketplace](https://pi.dev/packages).)
 
 ## License
 
-MIT © 2026 gitgmbh
+MIT
