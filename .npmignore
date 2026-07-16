@@ -1,28 +1,10 @@
-# Internal-only files (not for the public npm tarball)
-docs/INTERNAL.md
-
-# VCS / dev artifacts
 .git/
 .gitignore
-.gitsubmodules*
-.github/
 
-# Editor / OS
 .DS_Store
-.idea/
-.vscode/
-*.swp
-
-# Logs
-*.log
-npm-debug.log*
-
-# Env (never ship secrets)
 .env
 .env.local
-.env.*.local
 
-# Build / cache
 node_modules/
 dist/
-*.tsbuildinfo
+*.log
