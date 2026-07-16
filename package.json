@@ -1,0 +1,40 @@
+{
+  "name": "@gitgmbh/pi-trinity-mcp",
+  "version": "0.1.0",
+  "description": "Pi extension that delegates prompts to agents on the self-hosted Trinity MCP platform (HTTP+SSE Streamable transport). Config-less — auth via env vars. Surfaces a curated subset of the 84 Trinity MCP tools.",
+  "private": false,
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "trinity",
+    "mcp",
+    "agent-orchestration"
+  ],
+  "author": {
+    "name": "gitgmbh",
+    "url": "https://gitlab.git.gmbh/devops/pi-trinity-mcp"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@gitlab.git.gmbh/devops/pi-trinity-mcp.git"
+  },
+  "bugs": {
+    "url": "https://gitlab.git.gmbh/devops/pi-trinity-mcp/-/issues"
+  },
+  "homepage": "https://gitlab.git.gmbh/devops/pi-trinity-mcp#readme",
+  "files": [
+    "index.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
