@@ -1,6 +1,6 @@
 {
   "name": "@gitgmbh/pi-trinity-mcp",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Pi extension that delegates prompts to agents on any self-hosted Trinity MCP platform (HTTP+SSE Streamable transport). Config-less auth via env vars. Surfaces a curated subset of the Trinity MCP tools.",
   "private": false,
   "type": "module",
@@ -23,7 +23,19 @@
       "./index.ts"
     ]
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.git.gmbh/devops/pi-trinity-mcp.git"
+  },
+  "homepage": "https://gitlab.git.gmbh/devops/pi-trinity-mcp#readme",
+  "bugs": {
+    "url": "https://gitlab.git.gmbh/devops/pi-trinity-mcp/-/issues"
+  },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
   }
 }

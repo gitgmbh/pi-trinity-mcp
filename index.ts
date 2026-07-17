@@ -2,10 +2,10 @@
  * Trinity Pi Extension (full MCP)
  *
  * Speaks the Model Context Protocol (MCP) over HTTP+SSE against
- * the self-hosted Trinity MCP endpoint at `${TRINITY_URL}/mcp`.
+ * the self-hosted Trinity MCP endpoint at `${TRINITY_URL}/sse`.
  *
  * Protocol summary (Streamable HTTP transport):
- *   1. POST {TRINITY_URL}/mcp with `initialize` → server returns
+ *   1. POST {TRINITY_URL}/sse with `initialize` → server returns
  *      `mcp-session-id` header. Capture it; reuse for all subsequent calls.
  *   2. POST `notifications/initialized` (no response expected).
  *   3. POST `tools/call` with {name, arguments} → response is SSE stream with
@@ -112,7 +112,7 @@ class StreamableMCPClient implements MCPClient {
 
   private async ensureSession(): Promise<void> {
     if (this.sessionId) return;
-    const url = `${this.cfg.baseUrl}/mcp`;
+    const url = `${this.cfg.baseUrl}/sse`;
     const resp = await fetch(url, {
       method: "POST",
       headers: this.headers(),
@@ -132,7 +132,7 @@ class StreamableMCPClient implements MCPClient {
     }
     this.sessionId = resp.headers.get("mcp-session-id") ?? undefined;
     if (!this.sessionId) {
-      throw new Error("Trinity /mcp returned no mcp-session-id header on initialize");
+      throw new Error("Trinity /sse returned no mcp-session-id header on initialize");
     }
     // Acknowledge the session per MCP spec
     await fetch(url, {
@@ -147,7 +147,7 @@ class StreamableMCPClient implements MCPClient {
 
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     await this.ensureSession();
-    const url = `${this.cfg.baseUrl}/mcp`;
+    const url = `${this.cfg.baseUrl}/sse`;
     const resp = await fetch(url, {
       method: "POST",
       headers: this.headers(),
@@ -387,7 +387,7 @@ export default function (pi: ExtensionAPI) {
       const masked = cfg.token ? `${cfg.token.slice(0, 8)}…${cfg.token.slice(-4)}` : "(no token)";
       pi.sendMessage({
         customType: "trinity-status",
-        content: `Trinity extension loaded — ${cfg.baseUrl}/mcp — token ${masked}`,
+        content: `Trinity extension loaded — ${cfg.baseUrl}/sse — token ${masked}`,
         display: true,
         details: { url: cfg.baseUrl, hasToken: Boolean(cfg.token) },
       });
