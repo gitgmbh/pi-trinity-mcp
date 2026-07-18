@@ -22,7 +22,20 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Extension version, read once from the package.json shipped alongside this
+// module (npm always includes it). Reported to Trinity in `initialize`.
+const EXTENSION_VERSION: string = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, "package.json"), "utf8"));
+    return typeof pkg?.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 // -----------------------------------------------------------------------------
 // Config
@@ -63,7 +76,11 @@ function resolveConfig(): TrinityConfig {
 // -----------------------------------------------------------------------------
 
 interface MCPClient {
-  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  callTool(
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<unknown>;
   close(): void;
 }
 
@@ -74,17 +91,24 @@ class TrinityAPIError extends Error {
 }
 
 function parseSSEResponse(text: string): unknown {
-  // SSE response: lines like "data: {...}\n\n". Extract the data payload.
+  // An SSE stream may carry several "data:" events (e.g. progress
+  // notifications before the reply). The JSON-RPC result is the last complete
+  // JSON object, so scan all events and keep the last one that parses.
+  let lastPayload: string | undefined;
+  let lastJson: unknown;
+  let sawJson = false;
   for (const line of text.split(/\r?\n/)) {
-    if (line.startsWith("data:")) {
-      const payload = line.slice(5).trim();
-      try {
-        return JSON.parse(payload);
-      } catch {
-        return payload;
-      }
+    if (!line.startsWith("data:")) continue;
+    lastPayload = line.slice(5).trim();
+    try {
+      lastJson = JSON.parse(lastPayload);
+      sawJson = true;
+    } catch {
+      /* not JSON — keep scanning for a later event */
     }
   }
+  if (sawJson) return lastJson;
+  if (lastPayload !== undefined) return lastPayload;
   // Fall back to plain JSON
   try {
     return JSON.parse(text);
@@ -95,6 +119,7 @@ function parseSSEResponse(text: string): unknown {
 
 class StreamableMCPClient implements MCPClient {
   private sessionId?: string;
+  private sessionInit?: Promise<void>;
   private nextId = 1;
 
   constructor(private cfg: TrinityConfig) {}
@@ -110,12 +135,25 @@ class StreamableMCPClient implements MCPClient {
     return h;
   }
 
-  private async ensureSession(): Promise<void> {
+  private async ensureSession(signal?: AbortSignal): Promise<void> {
     if (this.sessionId) return;
+    // Guard against concurrent callers (e.g. parallel delegation) each firing
+    // their own `initialize`: share a single in-flight init promise.
+    if (!this.sessionInit) {
+      this.sessionInit = this.initSession(signal).catch((err) => {
+        this.sessionInit = undefined; // allow a fresh attempt next call
+        throw err;
+      });
+    }
+    return this.sessionInit;
+  }
+
+  private async initSession(signal?: AbortSignal): Promise<void> {
     const url = `${this.cfg.baseUrl}/sse`;
     const resp = await fetch(url, {
       method: "POST",
       headers: this.headers(),
+      signal,
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: this.nextId++,
@@ -123,7 +161,7 @@ class StreamableMCPClient implements MCPClient {
         params: {
           protocolVersion: "2024-11-05",
           capabilities: {},
-          clientInfo: { name: "pi-trinity-extension", version: "1.0.0" },
+          clientInfo: { name: "pi-trinity-extension", version: EXTENSION_VERSION },
         },
       }),
     });
@@ -138,6 +176,7 @@ class StreamableMCPClient implements MCPClient {
     await fetch(url, {
       method: "POST",
       headers: this.headers(),
+      signal,
       body: JSON.stringify({
         jsonrpc: "2.0",
         method: "notifications/initialized",
@@ -145,12 +184,26 @@ class StreamableMCPClient implements MCPClient {
     });
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    await this.ensureSession();
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    return this.callToolOnce(name, args, signal, true);
+  }
+
+  private async callToolOnce(
+    name: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal | undefined,
+    allowRetry: boolean,
+  ): Promise<unknown> {
+    await this.ensureSession(signal);
     const url = `${this.cfg.baseUrl}/sse`;
     const resp = await fetch(url, {
       method: "POST",
       headers: this.headers(),
+      signal,
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: this.nextId++,
@@ -160,6 +213,13 @@ class StreamableMCPClient implements MCPClient {
     });
     const text = await resp.text();
     if (resp.status >= 400) {
+      // 404 means the server no longer recognizes our session id (restart /
+      // expiry). Per the MCP Streamable HTTP spec, re-initialize and retry once.
+      if (allowRetry && resp.status === 404 && this.sessionId) {
+        this.sessionId = undefined;
+        this.sessionInit = undefined;
+        return this.callToolOnce(name, args, signal, false);
+      }
       throw new TrinityAPIError(resp.status, text.slice(0, 300));
     }
     const data = parseSSEResponse(text) as Record<string, unknown> | null;
@@ -238,7 +298,7 @@ export default function (pi: ExtensionAPI) {
         Type.Number({ description: "Per-call timeout in seconds. Defaults to agent's configured cap (max 900)." }),
       ),
     }),
-    async execute(_id, params, _signal, onUpdate) {
+    async execute(_id, params, signal, onUpdate) {
       try {
         const c = getClient();
         onUpdate?.({
@@ -254,7 +314,7 @@ export default function (pi: ExtensionAPI) {
         if (params.model) args.model = params.model;
         if (params.timeout_seconds !== undefined) args.timeout_seconds = params.timeout_seconds;
 
-        const result = await c.callTool("chat_with_agent", args);
+        const result = await c.callTool("chat_with_agent", args, signal);
         const text = formatToolResult(result);
         return {
           content: [{ type: "text", text }],
@@ -276,9 +336,9 @@ export default function (pi: ExtensionAPI) {
     description: "List all agents on the Trinity platform with status, type, port, resources.",
     promptSnippet: "List all Trinity agents currently deployed",
     parameters: Type.Object({}),
-    async execute() {
+    async execute(_id, _params, signal) {
       try {
-        const r = await getClient().callTool("list_agents", {});
+        const r = await getClient().callTool("list_agents", {}, signal);
         return { content: [{ type: "text", text: formatToolResult(r) }], details: { raw: r } };
       } catch (err) {
         return {
@@ -298,9 +358,9 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       agent: Type.String({ description: "Agent name." }),
     }),
-    async execute(_id, params) {
+    async execute(_id, params, signal) {
       try {
-        const r = await getClient().callTool("get_agent", { name: params.agent });
+        const r = await getClient().callTool("get_agent", { name: params.agent }, signal);
         return { content: [{ type: "text", text: formatToolResult(r) }], details: { raw: r } };
       } catch (err) {
         return {
@@ -319,9 +379,9 @@ export default function (pi: ExtensionAPI) {
       "Fleet-wide summary: counts of healthy / degraded / unhealthy / critical agents, plus per-agent status.",
     promptSnippet: "Check Trinity fleet health (all agents at once)",
     parameters: Type.Object({}),
-    async execute() {
+    async execute(_id, _params, signal) {
       try {
-        const r = await getClient().callTool("get_fleet_health", {});
+        const r = await getClient().callTool("get_fleet_health", {}, signal);
         return { content: [{ type: "text", text: formatToolResult(r) }], details: { raw: r } };
       } catch (err) {
         return {
@@ -342,9 +402,9 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       agent: Type.String({ description: "Agent name." }),
     }),
-    async execute(_id, params) {
+    async execute(_id, params, signal) {
       try {
-        const r = await getClient().callTool("get_agent_health", { agent_name: params.agent });
+        const r = await getClient().callTool("get_agent_health", { agent_name: params.agent }, signal);
         return { content: [{ type: "text", text: formatToolResult(r) }], details: { raw: r } };
       } catch (err) {
         return {
@@ -365,11 +425,11 @@ export default function (pi: ExtensionAPI) {
       agent: Type.String({ description: "Agent name." }),
       tail: Type.Optional(Type.Number({ description: "Lines to fetch (default 50, max 1000).", default: 50 })),
     }),
-    async execute(_id, params) {
+    async execute(_id, params, signal) {
       try {
         const args: Record<string, unknown> = { agent_name: params.agent };
         if (params.tail !== undefined) args.tail = params.tail;
-        const r = await getClient().callTool("get_agent_logs", args);
+        const r = await getClient().callTool("get_agent_logs", args, signal);
         return { content: [{ type: "text", text: formatToolResult(r) }], details: { raw: r } };
       } catch (err) {
         return {
@@ -384,7 +444,13 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", () => {
     try {
       const cfg = resolveConfig();
-      const masked = cfg.token ? `${cfg.token.slice(0, 8)}…${cfg.token.slice(-4)}` : "(no token)";
+      // Only reveal head/tail for tokens long enough that the middle stays
+      // hidden; short tokens would be fully exposed by an 8+4 char reveal.
+      const masked = !cfg.token
+        ? "(no token)"
+        : cfg.token.length > 16
+          ? `${cfg.token.slice(0, 8)}…${cfg.token.slice(-4)}`
+          : "****";
       pi.sendMessage({
         customType: "trinity-status",
         content: `Trinity extension loaded — ${cfg.baseUrl}/sse — token ${masked}`,
