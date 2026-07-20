@@ -1,7 +1,7 @@
 {
   "name": "@gitgmbh/pi-trinity-mcp",
   "version": "0.1.4",
-  "description": "Pi extension that delegates prompts to agents on any self-hosted Trinity MCP platform (HTTP+SSE Streamable transport). Config-less auth via env vars. Surfaces a curated subset of the Trinity MCP tools.",
+  "description": "Pi extension that delegates prompts to agents on a self-hosted Trinity agent platform (https://github.com/Abilityai/trinity) via its MCP endpoint (HTTP+SSE Streamable transport). Config-less auth via env vars. Surfaces a curated subset of the Trinity MCP tools. Trinity is built by AbilityAI \u2014 this package is an independent pi client extension.",
   "private": false,
   "type": "module",
   "license": "MIT",
@@ -21,7 +21,8 @@
   "pi": {
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "video": "https://github.com/gitgmbh/pi-trinity-mcp/releases/download/v0.1.4/pi-trinity-mcp-demo.mp4"
   },
   "publishConfig": {
     "access": "public"

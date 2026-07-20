@@ -6,7 +6,7 @@
 
 ## What this is
 
-[Trinity](https://github.com/abilityai/trinity) is an open-source platform for deploying, orchestrating, and governing fleets of autonomous AI agents on your own hardware. It exposes a **MCP (Model Context Protocol)** endpoint at `https://<your-trinity-host>/sse` that lists dozens of tools for agent CRUD, scheduled loops, fleet health, event subscriptions, file sharing, voice calling, and more.
+[Trinity](https://github.com/abilityai/trinity) is an open-source platform for deploying, orchestrating, and governing fleets of autonomous AI agents on your own hardware. It exposes a **MCP (Model Context Protocol)** endpoint at `https://<your-trinity-host>/mcp` that lists dozens of tools for agent CRUD, scheduled loops, fleet health, event subscriptions, file sharing, voice calling, and more.
 
 This extension wraps a **curated subset** of those tools as native pi tools, so the model can spin up a delegation conversation without injecting every MCP schema into its context.
 
