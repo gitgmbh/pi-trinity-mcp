@@ -1,6 +1,6 @@
 {
   "name": "@gitgmbh/pi-trinity-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Pi extension that delegates prompts to agents on any self-hosted Trinity MCP platform (HTTP+SSE Streamable transport). Config-less auth via env vars. Surfaces a curated subset of the Trinity MCP tools.",
   "private": false,
   "type": "module",
