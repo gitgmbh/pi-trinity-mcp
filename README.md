@@ -62,7 +62,7 @@ A sensible convention is to give your agents role-coded names (e.g. `orchestrato
 
 ### Pattern: orchestrator + specialists
 
-A common pattern is one **orchestrator agent** that triages incoming tasks and dispatches to specialists (Ansible, Odoo, GitLab, debugging, etc.). To use it:
+A common pattern is one **orchestrator agent** that triages incoming tasks and dispatches to specialists (e.g. a code reviewer, a docs writer, an infrastructure agent, a tester). To use it:
 
 1. Delegate to the orchestrator first when a task is non-trivial — let it decompose the work.
 2. Talk to a specialist directly when you already know which agent owns the topic.
