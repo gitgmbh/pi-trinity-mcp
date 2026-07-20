@@ -28,11 +28,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://gitlab.git.gmbh/devops/pi-trinity-mcp.git"
+    "url": "git+https://github.com/gitgmbh/pi-trinity-mcp.git"
   },
-  "homepage": "https://gitlab.git.gmbh/devops/pi-trinity-mcp#readme",
+  "homepage": "https://github.com/gitgmbh/pi-trinity-mcp#readme",
   "bugs": {
-    "url": "https://gitlab.git.gmbh/devops/pi-trinity-mcp/-/issues"
+    "url": "https://github.com/gitgmbh/pi-trinity-mcp/issues"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
